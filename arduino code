@@ -1,0 +1,431 @@
+#include <Wire.h> 
+#include <LiquidCrystal_I2C.h>  //I2C pins declaration
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+#include <SoftwareSerial.h>
+SoftwareSerial gprsSerial(7, 8);  //7-->>Tx, 8-->Rx
+#include "dht.h"
+dht DHT;
+#include <DS3231.h>
+DS3231  rtc(SDA, SCL);
+Time t;
+int LDR = A0;          //analog pin for LDR sensor
+int IR = 3;            //digital pin for IR sensor
+#define DHT11_PIN 2    //digital pin for DHT11 sensor
+int smokeA0 = A1;        //analog pin for mq sensor
+int trigPin = 9;        // water Utrasonic
+int echoPin = 10;
+
+int Relay1 = 4;  //light
+int Relay2 = 5;   //relay for water pump
+int Relay3 = 6;   //relay for cooling fan
+int Relay4 = 11;   //relay for exhaust fan for Humidity control
+//int Relay4 = 7;   //relay for exhaust fan for Ammonia gas control
+int Relay5 = 12;     //relay for feeder control
+int Relay6 = 13;     //relay for Cleanliness DC Moter control
+
+const int OnHour1 = 19;     //light time 1
+const int OnHour2 = 20;
+
+const int OnHour3 = 4;    //light time 2
+const int OnHour4 = 5;
+
+void setup() {
+  
+  lcd.begin();                          //Defining 16 columns and 2 rows of lcd display
+  lcd.backlight();                      //To Power ON the back light
+  lcd.setCursor(0,0);                  //Defining positon to write from first row,first column .
+  lcd.print(" Smart Poultry ");        //You can write 16 Characters per line .
+  delay(1000);
+  lcd.setCursor(0,1);                 //Defining positon to write from second row,first column .
+  lcd.print(" Hello.... ");
+  delay(1000); 
+
+gprsSerial.begin(19200);
+  Serial.begin(19200);
+  Serial.println("Config SIM900...");
+  delay(2000);
+   gprsSerial.flush();
+  Serial.flush();
+   gprsSerial.println("AT+CGATT?");
+  delay(100);
+  toSerial();
+
+  gprsSerial.println("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\"");
+  delay(2000);
+  toSerial();
+  
+ lcd.clear(); 
+ lcd.setCursor(0,0);                  
+  lcd.print("Connect Network");        
+  delay(1000);
+  lcd.setCursor(0,1);                 
+  lcd.print("Connect GPRS");
+  delay(1000);
+   
+  gprsSerial.println("AT+SAPBR=3,1,\"APN\",\"bsnlnet\"");
+  delay(2000);
+  toSerial();
+
+  gprsSerial.println("AT+SAPBR=1,1"); 
+  delay(2000);
+  gprsSerial.println("AT+SAPBR=2,1");
+  delay(2000);
+  toSerial();
+
+  
+  rtc.begin();
+  pinMode(Relay1, OUTPUT);
+  digitalWrite(Relay1, LOW);
+  
+  pinMode(Relay2, OUTPUT);
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+
+  pinMode(3,INPUT);  //DHT11 input
+  
+  pinMode(Relay3, OUTPUT);
+  pinMode(Relay4, OUTPUT);
+  pinMode(Relay5, OUTPUT);
+  pinMode(Relay6, OUTPUT);
+  pinMode(smokeA0, INPUT);
+  pinMode(LDR, INPUT);
+  pinMode(IR, INPUT);   
+}
+
+void loop() {
+  t = rtc.getTime();
+  
+lcd.clear();//Clean the screen
+lcd.setCursor(0,0);
+lcd.print("Time:");
+lcd.setCursor(6,0); //clm,row
+lcd.print(t.hour);
+lcd.setCursor(8,0); 
+lcd.print(":");
+lcd.setCursor(9,0); 
+lcd.print(t.min);
+lcd.setCursor(11,0); 
+lcd.print(":");
+lcd.setCursor(12,0); 
+lcd.print(t.sec);
+lcd.setCursor(0,1); //date
+lcd.print("Date:");
+lcd.setCursor(6,1); //clm,row
+lcd.print(t.date);
+lcd.setCursor(8,1); 
+lcd.print(":");
+lcd.setCursor(9,1); 
+lcd.print(t.mon);
+lcd.setCursor(11,1); 
+lcd.print(":");
+lcd.setCursor(12,1); 
+lcd.print(t.year);
+delay(2000);
+
+lcd.clear();//Clean the screen
+lcd.setCursor(0,0); 
+lcd.print("collecting");
+lcd.setCursor(4,1);
+lcd.print("Data...");
+delay(2000);
+/*humadity and temperature & MQ gas sensor*/  
+int d = DHT.read11(DHT11_PIN);   //humadity and temperature
+Serial.print("Temperatur=");
+Serial.println(DHT.temperature);
+Serial.print("Humidity = ");
+Serial.println(DHT.humidity);
+
+int dt1=DHT.temperature;
+int dt2=DHT.humidity;
+String Act1;
+       Act1="FanOff";
+String Act2;
+       Act2="ExhFanOFF";
+ if(dt1>=41) 
+  {
+    digitalWrite(Relay3, HIGH); //cooling fan relay on
+     Serial.println("cooling fan on");
+     Act1="FanOn";
+  }
+  else
+  {
+    digitalWrite(Relay3, LOW); //cooling fan relay off
+      Act1="FanOff";
+    }
+     Serial.println(Act1);
+       
+int sensorThres = 400;   //mq sensor 100
+  int analogSensor = analogRead(smokeA0);
+int dt3=analogSensor-50;
+     
+  Serial.println(dt3);
+  if (dt3 > sensorThres||dt2>=75)  //  if (analogSensor-50 > sensorThres)
+  {
+  digitalWrite(Relay4,HIGH);
+  Serial.println("Exhaust fan on");  //exhaust fan relay on
+      Act2="ExhFanON";
+  }
+  else
+  {
+    digitalWrite(Relay4, LOW); //exhaust fan relay off
+          Act2="ExhFanOFF";
+    }
+        Serial.println(Act2);
+        
+/*Light    */  
+int dt4 = analogRead(LDR);
+String Act3;
+Serial.println("Luminicity=");
+Serial.print(dt4);
+ if(t.hour==8||t.hour==9||t.hour==10||t.hour==11||t.hour==12||t.hour==13||t.hour==14||t.hour==15||t.hour==16||t.hour==17||t.hour==18)
+  {
+  if (dt4>=400) 
+  {
+   digitalWrite(Relay1, HIGH);
+   Serial.println("LIGHT ON");
+   Act3="LightOn";
+  }
+  else
+  {
+    digitalWrite(Relay1,LOW);
+    Serial.println(" LIGHT OFF");
+       Act3="LightOFF";
+  }
+  }
+  else 
+  {
+  if(t.hour == OnHour1 || t.hour == OnHour2||t.hour == OnHour3 || t.hour == OnHour4)
+  {
+    digitalWrite(Relay1,HIGH);
+    Serial.println(" LIGHT ON");
+       Act3="LightOn";
+       lcd.clear();//Clean the screen
+lcd.setCursor(0,0); 
+lcd.print(" LIGHT ON");
+lcd.setCursor(0,1);
+lcd.print(t.hour);
+lcd.setCursor(4,1);
+lcd.print(Act3);
+delay(60000); //1 min
+   }
+  else
+  {
+    digitalWrite(Relay1,LOW);
+    Serial.println(" LIGHT OFF");
+       Act3="LightOFF";
+  }
+  }
+     Serial.println(Act3);
+ 
+/*Water level  */  
+long duration, distance;      //Ultrasonic code
+int dt5;
+String Act4;
+  digitalWrite(trigPin,HIGH);
+  delayMicroseconds(1000);
+  digitalWrite(trigPin, LOW);
+  duration=pulseIn(echoPin, HIGH);
+  distance =(duration/2)/29.1;
+  Serial.print(distance);
+  Serial.println("CM");
+  delay(2000);
+ 
+ if(distance<=5)
+  {
+    digitalWrite(Relay2, LOW);
+     Act4="PumpOff";
+    Serial.println(Act4);
+    dt5=100;
+     Serial.println(dt5);
+}
+   
+if(distance>=6&&distance<=10)
+  {
+     dt5=75;
+   Serial.println(dt5);
+     Act4="PumpOff";
+}
+if(distance>10&&distance<=13)
+  {
+     dt5=60;
+   Serial.println(dt5);
+   Act4="PumpOff";
+}
+if(distance>13&&distance<=16)
+  {
+     dt5=45;
+   Serial.println(dt5);
+     Act4="PumpOff";
+} 
+if(distance>=17)
+ {
+     digitalWrite(Relay2, HIGH);
+     dt5=40;
+     Serial.println(dt5);
+     Serial.println("MOTER ON");
+      Act4="PumpOn";
+      lcd.clear();//Clean the screen
+lcd.setCursor(0,0); 
+lcd.print(" PumpOn");
+lcd.setCursor(0,1);
+lcd.print(dt5);
+lcd.setCursor(4,1);
+lcd.print(Act4);
+     delay(75000);                 //give delay for fill up the water tank
+    digitalWrite(Relay2, LOW);
+   }
+       Serial.println(Act4); 
+/* Cleanliness System */  
+  String Act5="ProcessOFF";
+
+  if(t.hour == 1&& t.min==1 || t.hour == 6&& t.min==1 || t.hour == 7&& t.min==1 ||t.hour == 13&& t.min==1 ||t.hour == 19&& t.min==1  )
+  { 
+    digitalWrite(Relay6,HIGH);
+        Act5="ProcessON";
+lcd.clear();//Clean the screen
+lcd.setCursor(0,0); 
+lcd.print(" Cleaning ");
+lcd.setCursor(2,1);
+lcd.print(Act5);
+    delay(120000);
+    digitalWrite(Relay6,LOW);
+   // Serial.println(" Cleanliness Moter On");
+
+  }
+   else
+  {
+    digitalWrite(Relay5,HIGH);
+   // Serial.println(" Cleanliness Moter Off");
+      Act5="ProcessOFF";
+  }
+  
+       Serial.println(Act5);
+
+/* IR sensor */ 
+ int detect = digitalRead(IR);   // read obstacle status and store it into "detect"
+    String Act6="FeederEmpty";
+  if(detect == LOW){ 
+    Act6="FeederFull";
+    digitalWrite(Relay5,LOW);
+    Serial.println("Feeder is Full"); 
+    
+  }else{ 
+   Act6="FeederEmpty";
+   digitalWrite(Relay5,HIGH);
+lcd.clear();//Clean the screen
+lcd.setCursor(0,0); 
+lcd.print(Act6);
+lcd.setCursor(1,1);
+lcd.print(ProcessOff);
+   delay(120000); 
+   Serial.println("Feeder Getting full");  
+  }
+
+
+    gprsSerial.println("AT+HTTPINIT\r");
+  delay(2000); 
+  toSerial();
+ 
+String str="AT+HTTPPARA=\"URL\"," "http://websiteurl/project/wdata.php?dt1=";
+  String url = str  + dt1+"&Act1="+ Act1+ "&dt2="+ dt2+ "&dt3="+ dt3+ "&Act2="+ Act2+ "&dt4="+ dt4+"&Act3="+ Act3+ "&Act2="+ Act2+ "&dt5="+ dt5+ "&Act4="+ Act4+ "&Act5="+ Act5;
+
+    Serial.println(url);
+  gprsSerial.println(url);
+  
+delay(2000);
+Serial.println("SEND DATA..........."); 
+lcd.clear();//Clean the screen
+lcd.setCursor(0,0); 
+lcd.print("GPRS sent Data...");
+delay(2000); 
+    
+   toSerial();
+   gprsSerial.println("");
+   // set http action type 0 = GET, 1 = POST, 2 = HEAD
+   gprsSerial.println("AT+HTTPACTION=0\r");
+   delay(6000);
+  toSerial();
+   
+   gprsSerial.println("");
+   gprsSerial.println("AT+HTTPTERM\r");
+   toSerial();
+   delay(300);
+   gprsSerial.println("");
+
+
+delay(2000); 
+lcd.clear();//Clean the screen
+lcd.setCursor(0,0); 
+lcd.print("Temperature(C)");
+lcd.setCursor(0,1);
+lcd.print(dt1);
+lcd.setCursor(4,1);
+lcd.print(Act1);
+
+delay(2000); 
+lcd.clear();//Clean the screen
+lcd.setCursor(0,0); 
+lcd.print("Humidity(%)");
+lcd.setCursor(0,1);
+lcd.print(dt2);
+lcd.setCursor(4,1);
+lcd.print(Act2);
+
+delay(2000); 
+lcd.clear();//Clean the screen
+lcd.setCursor(0,0); 
+lcd.print("Gas Level(PPM)");
+lcd.setCursor(0,1);
+lcd.print(dt3);
+lcd.setCursor(4,1);
+lcd.print(Act2);
+
+delay(2000); 
+lcd.clear();//Clean the screen
+lcd.setCursor(0,0); 
+lcd.print("water level(%)");
+lcd.setCursor(0,1);
+lcd.print(dt5);
+lcd.setCursor(4,1);
+lcd.print(Act4);
+
+delay(1000); 
+lcd.clear();//Clean the screen
+lcd.setCursor(0,0); 
+lcd.print("Feeder is ");
+lcd.setCursor(0,1);
+lcd.print(Act6);
+
+delay(2000); 
+lcd.clear();//Clean the screen
+lcd.setCursor(0,0); 
+lcd.print("Light is ");
+lcd.setCursor(0,1);
+lcd.print(dt4);
+lcd.setCursor(4,1);
+lcd.print(Act3);
+
+delay(2000); 
+lcd.clear();//Clean the screen
+lcd.setCursor(0,0); 
+lcd.print("Cleanning ");
+lcd.setCursor(0,1);
+lcd.print(Act5);
+
+delay(2000); 
+lcd.clear();
+lcd.setCursor(0,0);
+lcd.print(" Smart Poultry ");
+lcd.setCursor(0,1);
+lcd.print("Hello....");
+delay(60000); //1min wait*/
+}
+
+
+void toSerial()
+{
+  while(gprsSerial.available()!=0)
+  {
+    Serial.write(gprsSerial.read());
+  }
+}

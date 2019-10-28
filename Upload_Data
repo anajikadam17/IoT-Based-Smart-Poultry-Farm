@@ -1,0 +1,22 @@
+<?php
+define('DB_SERVER','localhost');
+define('DB_USER','************'); //databasename
+define('DB_PASS' ,'********');  //databsepassword
+define('DB_NAME', '***********'); //databasename
+$con = mysqli_connect(DB_SERVER,DB_USER,DB_PASS,DB_NAME);
+
+if (mysqli_connect_errno($con))  
+{
+        echo "Failed to connect to MySQL: " . mysqli_connect_error();
+ }
+
+date_default_timezone_set('Asia/Kolkata');
+$date = date('d/m/Y h:i A'); 
+
+$sql = "INSERT INTO data (Date_Time, dt1, act1, dt2, dt3, act2, dt4, act3, dt5, act4, act5) VALUES ('$date','".$_GET['dt1']."','".$_GET['Act1']."','".$_GET['dt2']."','".$_GET['dt3']."','".$_GET['Act2']."','".$_GET['dt4']."','".$_GET['Act3']."','".$_GET['dt5']."','".$_GET['Act4']."','".$_GET['Act5']."')";   // Execute SQL statement
+	if (!mysqli_query($con,$sql))
+            {
+            die('Error: ' . mysqli_error($con));
+            }
+     mysqli_close($con);
+?>
